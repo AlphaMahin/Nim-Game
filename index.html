@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset='utf-8'>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <title>Nim Game</title>
+
+    <link href="style.css" rel="stylesheet" type="text/css" />
+    <link href="nim.css" rel="stylesheet" type="text/css" />
+
+    <style>
+        body {
+            background-image: url("back.jpg");
+        }
+        .hidden { display: none; }
+    </style>
+
+    <script>
+        var username, password, heap_size, game, rack, turn, stack, pieces, winner, playerLeft = false, playerName = [], playerVictory = [], playerGames = [], ranking;
+       
+    </script>
+</head>
+
+<body>
+
+<!-- Login ection starts -->
+<section id="login_form" style="text-align:-webkit-center;position:relative;top:30%">
+    <form role="form" accept-charset="utf-8" onsubmit="validate(); return false;">
+        <h3 style="color:white;"> Login Form </h3>
+
+        <input type="textbox" placeholder="User Name" id="user" required /><br><br>
+        <input type="password" placeholder="Password" id="password" required /><br><br>
+        <input type="number" placeholder="Heaps (Same Size for player)" id="heap_size" required /><br><br>
+        <input type="submit" value="Login" id="btnLogin"/>
+            
+        <p style="color:red" id="form_message"></p>
+    </form>
+
+    <script>
+        
+                function validate() 
+                {   
+                    username = document.getElementById("user").value;
+                    password = document.getElementById("password").value;
+
+                                       
+                    var params = JSON.stringify({nick: username, pass: password}); 
+                    var url = "http://twserver.alunos.dcc.fc.up.pt:8008/register";
+                    
+                    var req = new XMLHttpRequest();
+                    req.open("POST",url,true);
+
+                    req.onreadystatechange = function()
+                    {
+                        if(req.readyState == 4 && req.status == 200)
+                        {
+                            var response = req.responseText;
+                            
+                            console.log("Registration Succesful! "+response);
+
+                            //immediately join
+                            join();
+                        }
+                       
+                    }
+                    req.send(params);
+                }
+
+                
+                function join()
+                {
+                    heap_size = document.getElementById("heap_size").value;
+                    heap_size = parseInt(heap_size);
+                    if(heap_size <= 1){
+                        heap_size = 1;
+                    }
+                    else{
+                        heap_size = heap_size;
+                    }
+                    var parameter = JSON.stringify({group: 52, nick: username, pass: password, size: heap_size}); 
+                    var url = "http://twserver.alunos.dcc.fc.up.pt:8008/join";
+                    
+                    var xhr = new XMLHttpRequest();
+                    xhr.open("POST",url,true);
+
+                    xhr.onreadystatechange = function()
+                    {
+                        if(this.readyState == 4 && this.status == 200)
+                        {
+                            var response = JSON.parse(xhr.responseText);
+                            
+                            console.log("Success! "+xhr.responseText);
+
+                            if(response.error)
+                            {
+                                alert("Login inválido!\n" + response.error);
+                            }
+                            else
+                            {
+                                game = response.game; //game value from server reply.
+                                if(game)
+                                {
+                                    console.log("New Game Created! " + game);
+                                }
+                                //game screen shows
+                                document.getElementById( 'labelHeap' ).innerHTML = getSize();
+                                document.getElementById( 'form_message' ).innerHTML = "";
+                                document.getElementById( 'login_form' ).className += " hidden";
+                                document.getElementById( "game_section" ).classList.remove("hidden");
+                                //document.getElementById("game-turn").innerHTML = "";
+                                document.getElementById("btnNew").disabled = true;
+                                document.getElementById("btnNew").style.cursor = "not-allowed";
+                                
+
+
+
+                                //server update request
+                                update();   
+
+
+                                
+
+                            }
+                        }
+                    }
+                    xhr.send(parameter);
+                 
+                }
+                function notify(stack, pickedUp)
+                {
+                    var parameter = JSON.stringify({nick: getUserName() , pass: getPassword(), game: getGame(), stack: stack, pieces: getRackIndex(stack)-pickedUp }); 
+                    var url = "http://twserver.alunos.dcc.fc.up.pt:8008/notify";
+                    
+                    var xhr = new XMLHttpRequest();
+                    xhr.open("POST",url,true);
+
+                    xhr.onreadystatechange = function()
+                    {
+                        if(this.readyState == 4 && this.status == 200)
+                        {
+                            var response = xhr.responseText;
+                            
+                            console.log("Notified! "+ response);
+                                
+                            
+                        }
+                    }
+                    xhr.send(parameter);
+                 
+                }
+
+                function leave()
+                {
+                    var parameter = JSON.stringify({nick: getUserName() , pass: getPassword(), game: getGame() }); 
+                    var url = "http://twserver.alunos.dcc.fc.up.pt:8008/leave";
+                    
+                    var xhr = new XMLHttpRequest();
+                    xhr.open("POST",url,true);
+
+                    xhr.onreadystatechange = function()
+                    {
+                        if(this.readyState == 4 && this.status == 200)
+                        {
+                            var response = xhr.responseText;
+                            console.log("Left the game."+ response);
+                            playerLeft = true;
+                            document.getElementById("btn").disabled = true;
+                            document.getElementById("btn").style.cursor = "not-allowed";
+                            document.getElementById("btnNew").disabled = false;
+                            document.getElementById("btnNew").style.cursor = "pointer";
+                            document.getElementById("game-turn").innerHTML = "";
+                                
+                        }
+                    }
+                    xhr.send(parameter);
+                 
+                }
+
+                function ranking()
+                {
+                    var parameter = JSON.stringify({ size: getSize() }); 
+                    var url = "http://twserver.alunos.dcc.fc.up.pt:8008/ranking";
+                    
+                    var xhr = new XMLHttpRequest();
+                    xhr.open("POST",url,true);
+
+                    xhr.onreadystatechange = function()
+                    {
+                        if(this.readyState == 4 && this.status == 200)
+                        {
+                            var response = JSON.parse(xhr.responseText);
+                            
+                            
+                            for (var i = 0; i < response.ranking.length ; i++) {
+                                playerName.push(response.ranking[i].nick);
+                                playerGames.push(response.ranking[i].games);
+                                playerVictory.push(response.ranking[i].victories);
+                            }
+
+                            console.log(playerName);
+
+                            var el;
+                            var prefix = 'leaderboard';
+                            for(var i = 0; el = document.getElementById(prefix + i); i++) {
+                                if(i < response.ranking.length){
+                                el.innerHTML = "Player: "+playerName[i]+"  -----  Games: "+playerGames[i]+"  -----  Victories: "+playerVictory[i];
+                              
+                            }
+                        }
+
+                            
+                        }
+                    }
+                    xhr.send(parameter);
+                 
+                }
+
+
+                
+                function update(){
+                    
+                    var updater = new EventSource("http://twserver.alunos.dcc.fc.up.pt:8008/update?nick=" + username + "&game=" + game );
+                    console.log("Waiting for a player to be paired");
+                    
+                    document.getElementById("btn").disabled = false;
+                    document.getElementById("btn").style.cursor = "pointer";
+
+                    document.getElementById("game-turn").innerHTML = "Please Wait For Another Player to Join";
+                    
+            
+                    updater.onmessage = function(e){
+                            
+                    var res = JSON.parse(e.data);
+                    //document.getElementById("wait").innerHTML = "";
+
+
+                    
+                    console.log("Success! --> Paired ");
+
+                    if(res.turn){
+                        turn = res.turn;
+                        console.log("Turn: "+turn);
+                        document.getElementById("game-turn").innerHTML = "Turn: "+ getTurn();
+                        //document.getElementById("wait").innerHTML = "";
+
+                    }
+                    if(res.rack){
+                        rack = res.rack;
+                        load_game();
+                        console.log("Rack: "+rack);
+
+                    }
+                    if(res.stack){
+                        stack = res.stack;
+                        //console.log("Stack: "+stack);
+                    }
+                    if(res.pieces){
+                        pieces = res.pieces;
+                        //console.log("Pieces: "+pieces);
+                    }
+                    if(res.winner){
+                        winner = res.winner;
+                        console.log("Winner is: "+winner);
+                        //setRack([0,0,0,0,0]);
+                        //removeRack();
+                        //document.getElementById("game").innerHTML = "";
+                        //document.getElementById("finish").innerHTML = "Finished. Again Play?";
+                        if(playerLeft){
+                            document.getElementById("game-turn").innerHTML = "Winner: "+ getWinner()+" - Opponent Left the Game.";
+                            playerLeft = false;
+                            
+
+                        }
+                        else{
+                            document.getElementById("game-turn").innerHTML = "Winner: "+ getWinner();
+                            document.getElementById("btn").disabled = true;
+                            document.getElementById("btn").style.cursor = "not-allowed";
+                            document.getElementById("btnNew").disabled = false;
+                            document.getElementById("btnNew").style.cursor = "pointer";
+                            
+                        }
+                        updater.close();
+
+                        //console.log(playerLeft);
+                        
+                    }
+
+                                                  
+                  };
+                }
+
+                //document.getElementById("btnLogin").addEventListener("click", validate);
+
+                function getUserName(){
+                    return username;
+                }
+
+                function getPassword(){
+                    return password;
+                }
+
+                function getGame(){
+                    return game;
+                }
+                function getTurn(){
+                    return turn;
+                }
+                function getRack(){
+                    return rack;
+                }
+                function getRackIndex(i){
+                    return rack[i];
+                }
+                function getStack(){
+                    return stack;
+                }
+                function getPieces(){
+                    return pieces;
+                }
+                function getWinner(){
+                    return winner;
+                }
+                function setRack(newRack){
+                    rack = newRack;
+                }
+                function removeRack(){
+                    validate();
+                }
+                function getPlayerLeft(){
+                    return playerLeft;
+                }
+                function getSize(){
+                    return heap_size;
+                }
+                function getRankingSize(){
+                    return ranking;
+                }
+
+
+    </script>
+
+
+    <!--<script>
+        function Login() {
+            window.username = document.getElementById("user").value;
+            window.password = document.getElementById("password").value;
+
+            if ( window.username === "" || window.password === "" ) {
+                document.getElementById( 'form_message' ).innerHTML = "Both fields are required!";
+                return;
+            }
+
+            if ((window.username == "nim") && (window.password == "game")) {
+
+                document.getElementById( 'form_message' ).innerHTML = "";
+                document.getElementById( 'login_form' ).className += " hidden";
+                document.getElementById( "game_section" ).classList.remove("hidden");
+
+            } else {
+
+                document.getElementById( 'form_message' ).innerHTML = "";
+                document.getElementById( 'login_form' ).className += " hidden";
+                document.getElementById( "game_section" ).classList.remove("hidden");
+
+            }
+        }-->
+    </script>
+</section>
+<!-- Login ection ends -->
+
+<!-- Instructions section starts -->
+<section id="instructions" class="hidden" style="text-align:-webkit-center;position:relative;top:10%;color:white;">
+    <h3>Online Game</h3>
+    <h2>Play Nim against your computer!</h2>
+
+    <p style="color:white" id="message"> In one move, you can remove any number of matches but only from one row. Select any 'Row button' and click it to REMOVE matches. You win if you pick the LAST match. </p>
+    <h4>Who Moves First</h4>
+    <p style="color:white" id="message"> At the start of a game, you have the first move, unless you allow the computer to play first by pressing the 'PC move' button.</p>
+
+    <button onclick="back2gameIns()">Go Back To Game</button>
+    <script>
+        function back2gameIns() {
+            document.getElementById( 'instructions' ).className += " hidden";
+            document.getElementById( "game_section" ).classList.remove("hidden");
+        }
+    </script>
+</section>
+<!-- Login ection ends -->
+
+<!-- Game section starts -->
+<section id="game_section" class="hidden">
+    <div id="header">
+        <h1>NIM GAME</h1>
+    </div>
+    <div id="breadcrumb">
+    </div>
+    <div id="content">
+        <fieldset>
+            <legend id="nim-settings">Settings</legend>
+            <ul>
+                <li>
+                    <label for="nim-rows" id="nim-rows-label">Number of heaps: <strong id="labelHeap"></strong></label>
+                </li>
+                <!--<li>
+                    <label for="nim-first-player" id="nim-first-player-label">First to start:</label>
+                    <select id="nim-first-player" class="select">
+                        <option value="human">Human start</option>
+                        <option value="computer">Computer start</option>
+                    </select>
+                </li>-->
+                <li>
+                    <label for="nim-theme" id="nim-theme-label">Theme:</label>
+                    <select id="nim-theme" class="select">
+                        <option value="ThemeMatch" selected="selected">Match</option>
+                        
+                    </select>
+                </li>
+                <!--<li>
+
+                    <label for="nim-language" id="nim-language-label">Intelligence:</label>
+                    <select id="nim-level" class="select">
+                        <option value="less" selected="selected">Hard</option>
+                        <option value="more">Medium</option>
+                    </select>
+                </li>-->
+                <li class="controls">
+                    <button id="btnNew" class="button" onclick="join()">New game</button>
+                    <a href="javascript:void(0);">
+                        <button id="btn" class="button" onclick="leave()">Give Up Game</button>
+                    </a>
+                    <a href="javascript:void(0);">
+                        <button id="nimInstructions" class="button" onclick="gameInstructions()">Instructions</button>
+                    </a>
+                    <button id="" class="button" onclick="classBoard()">Classification Board</button>
+
+                </li>
+                <h2 id="game-turn" style="font-size: 30px;color: red;text-align: center;">
+                    
+                </h2>
+        </fieldset>
+        <div id="game">
+            
+        </div>
+    </div>
+    <div id="footer">
+
+    </div>
+    <script src="nim.js" type="text/javascript" charset="UTF-8">
+    </script>
+    <script>
+        //<![CDATA[
+        Game = null;
+        //NIM_HEAPS_VERSION = {
+            //3: [3, 4, 5],
+            //4: [1, 3, 5, 7],
+            //5: [1, 2, 4, 8, 10],
+            //6: [1, 2, 3, 4, 5, 6],
+            //7: [1, 2, 3, 4, 5, 6, 7]
+        //};
+        UI_LOCALIZATION = {
+            "en": {
+                "nim-settings": "Settings",
+                "nim-rows-label": "Number of heaps:",
+                //"nim-rows": {
+                    //"3": "3 (easy)",
+                    //"5": "5 (medium)",
+                    //"7": "7 (hard)"
+                //},
+                //"nim-first-player-label": "First to play:",
+                //"nim-first-player": {
+                 //   "human": "Human start",
+                 //   "computer": "Computer start"
+                //},
+               
+                "nim-language-label": "Language:",
+                "nim-new-game": "New game"
+            }
+
+        };
+        rows_select = document.getElementById("nim-rows");
+        first_player_select = document.getElementById("nim-first-player");
+        language_select = document.getElementById("nim-language");
+        theme_select = document.getElementById("nim-theme");
+        new_game_button = document.getElementById("nim-new-game");
+
+        function apply_translation(lang) {
+            if (!UI_LOCALIZATION[lang]) {
+                return;
+            }
+            for (key in UI_LOCALIZATION[lang]) {
+                var element = document.getElementById(key);
+                if (!element) {
+                    continue;
+                }
+                var message = UI_LOCALIZATION[lang][key];
+                var tag_name = new String(element.tagName);
+                if (tag_name.toLowerCase() == "select") {
+                    for (var i = 0; i < element.options.length; i++) {
+                        var option = element.options[i];
+                        var value = option.value;
+                        if (!message[value]) {
+                            continue;
+                        }
+                        option.text = message[value];
+                    }
+                } else {
+                    element.innerHTML = message;
+                }
+            }
+        }
+
+        function getSelectValue(element) {
+            try {
+                return element.options[element.selectedIndex].value;
+            } catch (e) {
+                return "";
+            }
+        }
+
+        function setSelectItem(element, value) {
+            for (var i = 0; i < element.options.length; i++) {
+                if (element.options[i].value == value) {
+                    element.selectedIndex = i;
+                    break;
+                }
+            }
+        }
+
+        function load_game() {
+            if (Game) {
+                Game.destroy();
+                Game = null;
+            }
+            var rows = getSelectValue(rows_select),
+                first_player = getSelectValue(first_player_select),
+                theme = getSelectValue(theme_select),
+                language = getSelectValue(language_select);
+            rows = parseInt(rows);
+            //var heaps = NIM_HEAPS_VERSION[rows];
+            var heaps = getRack();
+            if (!heaps) {
+                return;
+            }
+            Game = new nim.Game(language, heaps, getTurn(), "game", theme);
+            apply_translation(language);
+        }
+
+        load_game();
+        rows_select.onchange =
+            first_player_select.onchange =
+                theme_select.onchange =
+                    language_select.onchange =
+                        new_game_button.onclick = load_game;
+        window.onload = function() {
+            var lang_code;
+            try {
+                if (navigator.language) {
+                    lang_code = navigator.language;
+                } else if (navigator.systemLanguage) {
+                    lang_code = navigator.userLanguage;
+                } else if (navigator.userLanguage) {
+                    lang_code = navigator.userLanguage;
+                }
+                if (lang_code) {
+                    lang_code = lang_code.substr(0, 2);
+                    setSelectItem(language_select, lang_code);
+                }
+            } catch (e) {}
+            load_game();
+        };
+
+        function classBoard() {
+            document.getElementById( 'game_section' ).className += " hidden";
+            document.getElementById( "classificationBorad" ).classList.remove("hidden");
+
+            document.getElementById("name").innerHTML = "Hello <I>' " + window.username + " '</I> Here is your Classification Board";
+            document.getElementById("win").innerHTML = win;
+            document.getElementById("lose").innerHTML = lose;
+            ranking();
+
+        }
+        //]]>
+    </script>
+    <script>
+        function gameInstructions() {
+            document.getElementById( 'game_section' ).className += " hidden";
+            document.getElementById( "instructions" ).classList.remove("hidden");
+        }
+    </script>
+</section>
+<!-- Game section ends -->
+
+<!-- Classification Board section starts -->
+<section id="classificationBorad" class="hidden">
+    <div style="text-align:-webkit-center;position:relative;top:10%;color:white">
+        <h1 id="name">
+        </h1>
+        <table style="color:white">
+            <tr>
+                <th> Win </th>
+                <th> Lose </th>
+            <tr>
+                <td id="win"> asad</td>
+                <td id="lose"> ali</td>
+            </tr>
+        </table>
+
+        <button id="back2game" onclick="back2game()">Go Back To Game</button>
+    </div>
+
+    <div style="text-align:-webkit-center;position:relative;top:10%;color:white">
+       <fieldset> 
+        <table style="color: white">
+            <tr>
+                <h1> ***** LEADERBOARD *****</h1>
+            </tr>
+            
+            <tr>
+                <h3 id="leaderboard0"></h3>
+                <h3 id="leaderboard1"></h3>
+                <h3 id="leaderboard2"></h3>
+            </tr>
+            <tr>
+                <h3 id="leaderboard3"></h3>
+                <h3 id="leaderboard4"></h3>
+                <h3 id="leaderboard5"></h3>
+            </tr>
+            <tr>
+                <h3 id="leaderboard6"></h3>
+                <h3 id="leaderboard7"></h3>
+                <h3 id="leaderboard8"></h3>
+            </tr>
+            <tr>
+                <h3 id="leaderboard9"></h3>
+                <h3 id="leaderboard10"></h3>
+                <h3 id="leaderboard11"></h3>
+            </tr>
+
+        </table>
+    </fieldset>
+    </div>
+
+    <script>
+        function back2game() {
+            document.getElementById( 'classificationBorad' ).className += " hidden";
+            document.getElementById( "game_section" ).classList.remove("hidden");
+        }
+    </script>
+</section>
+<!-- Classification Board section ends -->
+
+</body>
+</html>
